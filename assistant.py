@@ -10,7 +10,6 @@ import pyjokes
 import pyautogui
 import requests
 import speech_recognition as sr
-from tqdm import tk
 from weather import Weather
 from camera import Camera
 from object_detection import ObjectDetection
