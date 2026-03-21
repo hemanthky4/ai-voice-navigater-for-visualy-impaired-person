@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Navigation Dashboard</title>
+    <!-- Modern Typography: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Leaflet Map CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="dashboard-wrapper">
+        <!-- Top App Bar / Header -->
+        <header class="top-header">
+            <div class="logo">
+                <i class="ph-fill ph-navigation-arrow"></i>
+                <h2>NaviSight AI</h2>
+            </div>
+            <div class="user-profile">
+                <span class="status-indicator"></span>
+                <span class="user-name">System Online</span>
+                <i class="ph ph-user-circle"></i>
+            </div>
+        </header>
+
+        <div class="dashboard-layout">
+            <!-- Left Side Panel -->
+            <aside class="sidebar-left">
+                <!-- Video Upload Card -->
+                <div class="card upload-card interactive-hover">
+                    <div class="card-header">
+                        <div class="icon-wrapper blue-bg">
+                            <i class="ph ph-video-camera"></i>
+                        </div>
+                        <h3>Scene Analysis</h3>
+                    </div>
+                    <div class="upload-area" id="uploadArea">
+                        <!-- Default Upload State -->
+                        <div id="uploadState" style="display: contents;">
+                            <i class="ph ph-cloud-arrow-up cloud-icon"></i>
+                            <p class="upload-text">Drag & drop video file here or</p>
+                            <label for="fileInput" class="btn btn-outline" id="fileSelectorBtn">
+                                Browse Files
+                            </label>
+                            <input type="file" id="fileInput" accept="video/mp4,video/x-m4v,video/*" hidden>
+                            <p class="file-name" id="fileNameDisplay"></p>
+                        </div>
+                        <!-- Live Camera Feed State -->
+                        <video id="liveCameraFeed" autoplay playsinline style="display: none; width: 100%; border-radius: 8px; background: #000;"></video>
+                    </div>
+                    <div class="action-buttons mt-4" style="flex-direction: column; gap: 8px;">
+                        <button class="btn btn-primary w-full" id="startAnalysisBtn" disabled>
+                            <i class="ph ph-play-circle"></i>
+                            Analyze Upload
+                        </button>
+                        <button class="btn btn-outline w-full" id="startCameraBtn" style="border-width: 2px;">
+                            <i class="ph ph-video-camera"></i>
+                            Start Live Camera
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Voice Navigation Card -->
+                <div class="card nav-card interactive-hover">
+                    <div class="card-header">
+                        <div class="icon-wrapper green-bg">
+                            <i class="ph ph-microphone-stage"></i>
+                        </div>
+                        <h3>Voice Navigation</h3>
+                    </div>
+                    <div class="input-group">
+                        <label for="destinationInput">Destination</label>
+                        <div class="input-with-icon">
+                            <i class="ph ph-map-pin"></i>
+                            <input type="text" id="destinationInput" placeholder="e.g., Main Hallway, Room 101" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="action-buttons mt-4">
+                        <button class="btn btn-success flex-1" id="startNavBtn">
+                            <i class="ph ph-navigation-arrow"></i> Navigate
+                        </button>
+                        <button class="btn btn-icon pulse-animation" id="voiceInputBtn" aria-label="Voice Input">
+                            <i class="ph ph-microphone"></i>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Side Panel -->
+            <main class="main-content">
+                <!-- Large Map Card -->
+                <div class="card map-card interactive-hover">
+                    <div class="map-overlay-header">
+                        <h3>Live Route Display</h3>
+                        <div class="map-controls">
+                            <button class="btn btn-icon-small"><i class="ph ph-corners-out"></i></button>
+                        </div>
+                    </div>
+                    <!-- Map Container -->
+                    <div id="map" class="map-container"></div>
+                </div>
+
+                <!-- Bottom Information Cards -->
+                <div class="info-cards-grid">
+                    <!-- Current Location -->
+                    <div class="card info-card interactive-hover">
+                        <div class="info-icon location">
+                            <i class="ph ph-crosshair"></i>
+                        </div>
+                        <div class="info-content">
+                            <p class="info-label">Current Location</p>
+                            <h4 class="info-value">Main Lobby</h4>
+                        </div>
+                    </div>
+
+                    <!-- Nearest Obstacle -->
+                    <div class="card info-card interactive-hover">
+                        <div class="info-icon obstacle">
+                            <i class="ph ph-warning"></i>
+                        </div>
+                        <div class="info-content">
+                            <p class="info-label">Nearest Obstacle</p>
+                            <h4 class="info-value alert-text">Chair (1.5m ahead)</h4>
+                        </div>
+                    </div>
+
+                    <!-- System Status -->
+                    <div class="card info-card interactive-hover">
+                        <div class="info-icon status">
+                            <i class="ph ph-check-circle"></i>
+                        </div>
+                        <div class="info-content">
+                            <p class="info-label">System Status</p>
+                            <h4 class="info-value success-text">Active & Guiding</h4>
+                        </div>
+                    </div>
+
+                    <!-- Weather Info -->
+                    <div class="card info-card interactive-hover" id="weatherCard">
+                        <div class="info-icon" style="background: rgba(14, 165, 233, 0.15); color: #0EA5E9;">
+                            <i class="ph ph-cloud-sun"></i>
+                        </div>
+                        <div class="info-content">
+                            <p class="info-label">Local Weather</p>
+                            <h4 class="info-value" id="weatherValue">Fetching...</h4>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Custom script -->
+    <script src="script.js"></script>
+</body>
+</html>
