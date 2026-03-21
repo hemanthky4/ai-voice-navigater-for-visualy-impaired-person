@@ -1,20 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    let BACKEND_URL = '';
-    if (window.location.hostname.includes('github.io')) {
-        BACKEND_URL = localStorage.getItem('ai_backend_url');
-        if (!BACKEND_URL || !BACKEND_URL.startsWith('http')) {
-            BACKEND_URL = prompt("Welcome to the GitHub Live Preview! Please enter your active secure Tunnel URL from your computer (e.g. from localtunnel or ngrok):", "https://your-tunnel.loca.lt");
-            if (BACKEND_URL) {
-                BACKEND_URL = BACKEND_URL.replace(/\/$/, "");
-                localStorage.setItem('ai_backend_url', BACKEND_URL);
-            } else {
-                alert("You must provide your computer's tunnel URL to use the AI features!");
-            }
-        }
-    } else {
-        BACKEND_URL = window.location.hostname ? `http://${window.location.hostname}:5000` : 'http://127.0.0.1:5000';
-    }
+    let BACKEND_URL = 'http://127.0.0.1:5000';
 
 
     // ---- AI Voice Feedback Helper ----
