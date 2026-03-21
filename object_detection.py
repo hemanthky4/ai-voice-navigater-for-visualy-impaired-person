@@ -3,14 +3,22 @@ import numpy as np
 import pyttsx3
 import queue
 import threading
+import time
+
+try:
+    from ultralytics import YOLO
+except ImportError:
+    pass
 
 class ObjectDetection:
     def __init__(self, engine, assistant=None):
         self.engine = engine
         self.assistant = assistant  # Link to the assistant
-        self.net = cv2.dnn.readNetFromDarknet('yolov4.cfg', 'yolov4.weights')
-        with open('coco.names', 'r') as f:
-            self.classes = [line.strip() for line in f.readlines()]
+        
+        try:
+            self.model = YOLO('yolov8n.pt')
+        except Exception:
+            self.model = None
 
         # Queue for managing speech synthesis
         self.speech_queue = queue.Queue()
@@ -37,66 +45,53 @@ class ObjectDetection:
         self.personal_objects[object_name.lower()] = description
 
     def detect_objects(self):
+        if not self.model:
+            self.speak("YOLO model could not be loaded. Please ensure ultralytics is installed.")
+            return
+            
         cap = cv2.VideoCapture(0)
+        last_speech_time = time.time()
+        
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            blob = cv2.dnn.blobFromImage(frame, 1 / 255, (416, 416), swapRB=True, crop=False)
-            self.net.setInput(blob)
-            layer_names = self.net.getLayerNames()
-            output_layers = [layer_names[i - 1] for i in self.net.getUnconnectedOutLayers()]
-            outputs = self.net.forward(output_layers)
-
-            boxes = []
-            confidences = []
-            class_ids = []
+            results = self.model(frame, verbose=False)
             detected_objects = []  # For scene understanding
 
-            for output in outputs:
-                for detection in output:
-                    scores = detection[5:]
-                    class_id = np.argmax(scores)
-                    confidence = scores[class_id]
+            for result in results:
+                for box in result.boxes:
+                    confidence = float(box.conf[0])
                     if confidence > 0.5:
-                        center_x = int(detection[0] * frame.shape[1])
-                        center_y = int(detection[1] * frame.shape[0])
-                        width = int(detection[2] * frame.shape[1])
-                        height = int(detection[3] * frame.shape[0])
-                        x = int(center_x - width / 2)
-                        y = int(center_y - height / 2)
+                        class_id = int(box.cls[0])
+                        label = self.model.names[class_id]
+                        
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        w = x2 - x1
+                        h = y2 - y1
 
-                        boxes.append([x, y, width, height])
-                        confidences.append(float(confidence))
-                        class_ids.append(class_id)
+                        color_name = self.get_color_name(frame, x1, y1, w, h)
+                        position = self.get_relative_position(x1 + w // 2, frame.shape[1])
+                        distance = self.calculate_distance(w)
 
-            indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-            if len(indices) > 0:
-                for i in indices.flatten():
-                    x, y, w, h = boxes[i]
-                    label = self.classes[class_ids[i]]
-                    color_name = self.get_color_name(frame, x, y, w, h)
-                    position = self.get_relative_position(x + w // 2, frame.shape[1])
-                    distance = self.calculate_distance(w)
+                        description = f"{label} of color {color_name} is {position}, approx {distance:.1f} m away."
+                        if description not in detected_objects:
+                            detected_objects.append(description)
+                            
+                            current_time = time.time()
+                            if current_time - last_speech_time > 3: # prevent spamming voice
+                                self.speak(description)
+                                last_speech_time = current_time
 
-                    description = f"{label} of color {color_name} is {position}, approximately {distance:.2f} cm away."
-                    detected_objects.append(description)
-                    self.speak(description)
+                        # Personal object recognition
+                        if label.lower() in self.personal_objects:
+                            personal_description = f"{self.personal_objects[label.lower()]} is detected."
+                            self.speak(personal_description)
 
-                    # Personal object recognition
-                    if label.lower() in self.personal_objects:
-                        personal_description = f"{self.personal_objects[label.lower()]} is detected."
-                        self.speak(personal_description)
-
-                    # Draw bounding boxes
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-                    cv2.putText(frame, description, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-
-            # Scene understanding
-            if detected_objects:
-                scene_description = "The scene contains: " + ", ".join(detected_objects)
-                self.speak(scene_description)
+                        # Draw bounding boxes
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.putText(frame, description, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
             # Display frame
             cv2.imshow('Enhanced Object Detection', frame)
@@ -111,8 +106,9 @@ class ObjectDetection:
         """Calculate distance based on bounding box width."""
         focal_length = 600  # Example focal length (in pixels)
         real_width = 15  # Example real width of the object (in cm)
+        if width_in_pixels == 0: width_in_pixels = 1
         distance = (real_width * focal_length) / width_in_pixels
-        return distance
+        return distance / 100.0  # meters
 
     def get_relative_position(self, center_x, frame_width):
         """Determine the relative position of an object in the frame."""
@@ -125,7 +121,10 @@ class ObjectDetection:
 
     def get_color_name(self, frame, x, y, w, h):
         """Get the dominant color name of an object."""
+        x = max(0, x)
+        y = max(0, y)
         cropped = frame[y:y + h, x:x + w]
+        if cropped.size == 0: return "unknown color"
         average_color = np.mean(cropped, axis=(0, 1))  # Average BGR color
         color_name = self.map_color(average_color)
         return color_name

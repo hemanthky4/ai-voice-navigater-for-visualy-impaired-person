@@ -115,9 +115,12 @@ class FridayAssistant:
             self.talk(joke)
         elif 'weather' in command:
             city = command.replace('weather', '').strip()
-            self.weather.get_weather(city)
-            self.talk(self.weather.get_weather(city))
-            print(f"Weather in {city}")
+            if not city:
+                self.talk("Please specify a city name.")
+            else:
+                weather_info = self.weather.get_weather(city)
+                self.talk(weather_info)
+                print(f"Weather in {city}")
         elif 'cheese' in command or 'chees' in command:
             self.camera.capture_image()
             self.talk("Capturing image now.")

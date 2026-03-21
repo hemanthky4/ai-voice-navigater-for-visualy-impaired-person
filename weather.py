@@ -19,4 +19,4 @@ class Weather:
             return speech
         else:
             print("Unable to retrieve weather details.")
-            self.engine.say("Unable to retrieve weather details.")
+            return "Unable to retrieve weather details."
