@@ -227,7 +227,8 @@ def get_weather():
             lat, lng = location.split(',')
             lat, lng = lat.strip(), lng.strip()
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current_weather=true"
-            response = requests.get(url)
+            headers = {'User-Agent': 'AI-Voice-Navigator/1.0 (https://github.com/hemanthky4/ai-voice-navigater-for-visualy-impaired-person)'}
+            response = requests.get(url, headers=headers)
             weather_data = response.json()
             
             if 'current_weather' in weather_data:
