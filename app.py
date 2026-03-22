@@ -100,19 +100,20 @@ def analyze_video():
         
     print(f"\n[API] Received file for analysis: {file.filename}")
     
-    # Save the uploaded file temporarily to process it with YOLO
-    filename = file.filename
-    ext = os.path.splitext(filename)[1] if '.' in filename else '.mp4'
-    temp_path = os.path.join(f'temp_{uuid.uuid4()}{ext}')
-    file.save(temp_path)
-    
     detected_obstacles = []
     
     if HAS_YOLO:
         print("[AI] Running YOLOv8 Inference...")
         try:
-            # Run inference on the video (we process it and grab the Results object)
-            results = model.predict(source=temp_path, save=False, conf=0.4)
+            # Read image directly from memory rather than saving temp files to avoid locking/stability issues
+            file_bytes = np.frombuffer(file.read(), np.uint8)
+            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            
+            if image is None:
+                 raise ValueError("Could not decode image")
+                 
+            # Run inference on the in-memory image
+            results = model.predict(source=image, save=False, conf=0.4)
             
             # Parse the results from the frames
             for result in results:
@@ -164,13 +165,6 @@ def analyze_video():
             {"class": "Wall to your left", "confidence": 0.88, "distance": "3.2m", "raw_dist": 3.2}
         ]
     
-    # Clean up temp file
-    if os.path.exists(temp_path):
-        try:
-            os.remove(temp_path)
-        except Exception:
-            pass
-            
     # Determine primary hazard for UI (prioritize items closest to user numerically)
     detected_obstacles.sort(key=lambda x: x.get('raw_dist', 99.0))
     primary_hazard = f"{detected_obstacles[0]['class']} ({detected_obstacles[0]['distance']} ahead)" if detected_obstacles else "Clear Path"
@@ -227,33 +221,46 @@ def get_weather():
     if not location:
         return jsonify({'error': 'No location provided'}), 400
         
-    # Provided Weather API key
-    api_key = "2472b586acf6fb1152123eee8db7e3de"
-    url = f"http://api.weatherstack.com/current?access_key={api_key}&query={location}"
-    
     try:
-        response = requests.get(url)
-        weather_data = response.json()
-        
-        if 'current' in weather_data and 'location' in weather_data:
-            city_name = weather_data['location']['name']
-            weather = weather_data['current']['weather_descriptions'][0]
-            temperature = weather_data['current']['temperature']
-            humidity = weather_data['current']['humidity']
-            wind_speed = weather_data['current']['wind_speed']
-            speech = f"The weather in {city_name} is {weather}. The temperature is {temperature} degrees Celsius. The humidity is {humidity} percent. The wind speed is {wind_speed} kilometers per hour."
-            print(f"[Weather API] {speech}")
+        # Use Open-Meteo free API to avoid rate limits/API key issues
+        if ',' in location:
+            lat, lng = location.split(',')
+            lat, lng = lat.strip(), lng.strip()
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current_weather=true"
+            response = requests.get(url)
+            weather_data = response.json()
             
-            return jsonify({
-                "status": "success",
-                "weather": weather,
-                "temperature": f"{temperature}°C",
-                "city": city_name,
-                "speech": speech
-            }), 200
+            if 'current_weather' in weather_data:
+                current = weather_data['current_weather']
+                temperature = current['temperature']
+                wind_speed = current['windspeed']
+                wmo_code = current.get('weathercode', 0)
+                
+                weather_desc = "Clear"
+                if wmo_code in [1, 2, 3]: weather_desc = "Partly Cloudy"
+                elif wmo_code in [45, 48]: weather_desc = "Foggy"
+                elif wmo_code in [51, 53, 55, 56, 57]: weather_desc = "Drizzling"
+                elif wmo_code in [61, 63, 65, 66, 67]: weather_desc = "Raining"
+                elif wmo_code in [71, 73, 75, 77]: weather_desc = "Snowing"
+                elif wmo_code in [80, 81, 82]: weather_desc = "Rain Showers"
+                elif wmo_code in [95, 96, 99]: weather_desc = "Thunderstorm"
+                
+                city_name = "your location"
+                
+                speech = f"The weather at {city_name} is {weather_desc}. The temperature is {temperature} degrees Celsius. The wind speed is {wind_speed} kilometers per hour."
+                print(f"[Weather API] {speech}")
+                
+                return jsonify({
+                    "status": "success",
+                    "weather": weather_desc,
+                    "temperature": f"{temperature}°C",
+                    "city": city_name,
+                    "speech": speech
+                }), 200
+            else:
+                return jsonify({'error': 'Unable to retrieve weather details.'}), 400
         else:
-            print("[ERROR] Weather API Error:", weather_data.get('error', 'Unknown Error'))
-            return jsonify({'error': 'Unable to retrieve weather details.'}), 400
+            return jsonify({'error': 'Invalid location format. Expected lat,lng.'}), 400
     except Exception as e:
         print(f"[ERROR] Weather API Request Failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
