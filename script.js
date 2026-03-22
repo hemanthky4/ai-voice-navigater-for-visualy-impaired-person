@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    let BACKEND_URL = 'http://127.0.0.1:5000';
+    let BACKEND_URL = 'https://ai-voice-navigater-for-visualy-impaired.onrender.com';
 
 
     // ---- AI Voice Feedback Helper ----
