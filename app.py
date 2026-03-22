@@ -222,46 +222,73 @@ def get_weather():
         return jsonify({'error': 'No location provided'}), 400
         
     try:
-        # Use wttr.in for weather (no API key, cloud-friendly)
         if ',' in location:
             lat, lng = location.split(',')
             lat, lng = lat.strip(), lng.strip()
-            url = f"https://wttr.in/{lat},{lng}?format=j1"
-            headers = {'User-Agent': 'curl/7.68.0'}
-            response = requests.get(url, headers=headers)
-            weather_data = response.json()
             
-            if 'current_condition' in weather_data and len(weather_data['current_condition']) > 0:
-                current = weather_data['current_condition'][0]
-                temperature = current.get('temp_C', 'Unknown')
-                wind_speed = current.get('windspeedKmph', 'Unknown')
-                weather_desc = "Clear"
-                if 'weatherDesc' in current and len(current['weatherDesc']) > 0:
-                    weather_desc = current['weatherDesc'][0].get('value', 'Clear')
+            # --- Primary: Open-Meteo (Free, unlimited) ---
+            try:
+                url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current_weather=true"
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                response = requests.get(url, headers=headers, timeout=5)
+                weather_data = response.json()
                 
-                # Try to get nearest area
-                city_name = "your location"
-                if 'nearest_area' in weather_data and len(weather_data['nearest_area']) > 0:
-                    area = weather_data['nearest_area'][0]
-                    if 'areaName' in area and len(area['areaName']) > 0:
-                        city_name = area['areaName'][0].get('value', city_name)
+                if 'current_weather' in weather_data:
+                    current = weather_data['current_weather']
+                    temperature = current['temperature']
+                    wind_speed = current['windspeed']
+                    wmo_code = current.get('weathercode', 0)
+                    
+                    weather_desc = "Clear"
+                    if wmo_code in [1, 2, 3]: weather_desc = "Partly Cloudy"
+                    elif wmo_code in [45, 48]: weather_desc = "Foggy"
+                    elif wmo_code in [51, 53, 55, 56, 57]: weather_desc = "Drizzling"
+                    elif wmo_code in [61, 63, 65, 66, 67]: weather_desc = "Raining"
+                    elif wmo_code in [71, 73, 75, 77]: weather_desc = "Snowing"
+                    elif wmo_code in [80, 81, 82]: weather_desc = "Rain Showers"
+                    elif wmo_code in [95, 96, 99]: weather_desc = "Thunderstorm"
+                    
+                    speech = f"The weather at your location is {weather_desc}. The temperature is {temperature} degrees Celsius. The wind speed is {wind_speed} kilometers per hour."
+                    print(f"[Weather API - OpenMeteo] {speech}")
+                    
+                    return jsonify({
+                        "status": "success",
+                        "weather": weather_desc,
+                        "temperature": f"{temperature}°C",
+                        "city": "your location",
+                        "speech": speech
+                    }), 200
+            except Exception as e:
+                print(f"[ERROR] Open-Meteo failed: {str(e)}")
+            
+            # --- Fallback: Weatherstack (User's original key) ---
+            try:
+                api_key = "2472b586acf6fb1152123eee8db7e3de"
+                url = f"http://api.weatherstack.com/current?access_key={api_key}&query={location}"
+                response = requests.get(url, timeout=5)
+                weather_data = response.json()
                 
-                speech = f"The weather at {city_name} is {weather_desc}. The temperature is {temperature} degrees Celsius. The wind speed is {wind_speed} kilometers per hour."
-                print(f"[Weather API] {speech}")
-                
-                return jsonify({
-                    "status": "success",
-                    "weather": weather_desc,
-                    "temperature": f"{temperature}°C",
-                    "city": city_name,
-                    "speech": speech
-                }), 200
-            else:
-                return jsonify({'error': 'Unable to retrieve weather details.'}), 400
+                if 'current' in weather_data:
+                    city_name = weather_data.get('location', {}).get('name', 'your location')
+                    weather = weather_data['current']['weather_descriptions'][0]
+                    temperature = weather_data['current']['temperature']
+                    wind_speed = weather_data['current']['wind_speed']
+                    speech = f"The weather in {city_name} is {weather}. The temperature is {temperature} degrees Celsius. The wind speed is {wind_speed} kilometers per hour."
+                    print(f"[Weather API - Weatherstack Fallback] {speech}")
+                    return jsonify({
+                        "status": "success",
+                        "weather": weather,
+                        "temperature": f"{temperature}°C",
+                        "city": city_name,
+                        "speech": speech
+                    }), 200
+            except Exception as e:
+                print(f"[ERROR] Weatherstack fallback failed: {str(e)}")
+
+            return jsonify({'error': 'Unable to retrieve weather details from any API.'}), 400
         else:
             return jsonify({'error': 'Invalid location format. Expected lat,lng.'}), 400
     except Exception as e:
-        print(f"[ERROR] Weather API Request Failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
